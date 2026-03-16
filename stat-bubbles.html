@@ -1,20 +1,304 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stat Bubbles</title>
-    <style>
-        body { font-family: Arial, sans-serif; } 
-        .bubble { border-radius: 50%; border: 2px solid #4CAF50; position: relative; display: inline-block; 
-        margin: 10px; padding: 20px; color: white; text-align: center; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stat Bubbles</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #001A15;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+  }
+  #container {
+    width: 900px;
+    max-width: 100%;
+    height: 420px;
+    background: #001A15;
+    border-radius: 28px;
+    overflow: hidden;
+  }
+  @font-face {
+    font-family: 'FaktProBlack';
+    src: url('https://cdn.jsdelivr.net/gh/agatarocha/fakt/FaktPro-Black.otf') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: 'FaktProNormal';
+    src: url('https://cdn.jsdelivr.net/gh/agatarocha/fakt/FaktPro-Normal.otf') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+  }
+</style>
 </head>
 <body>
-    <h1>Statistics</h1>
-    <div class="bubble" style="background-color: #4CAF50;">Bubble 1: Data Point 1</div>
-    <div class="bubble" style="background-color: #2196F3;">Bubble 2: Data Point 2</div>
-    <div class="bubble" style="background-color: #FF9800;">Bubble 3: Data Point 3</div>
-    <div class="bubble" style="background-color: #f44336;">Bubble 4: Data Point 4</div>
+<div id="container"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script>
+Promise.all([
+  document.fonts.load('normal 32px FaktProBlack'),
+  document.fonts.load('normal 14px FaktProNormal')
+]).then(init)
+
+function init(){
+const {Engine,Render,Runner,Bodies,Composite,Mouse,MouseConstraint,Events,Body}=Matter
+
+const container=document.getElementById(“container”)
+const dpr=window.devicePixelRatio||1
+const width=container.clientWidth
+const height=container.clientHeight
+
+const engine=Engine.create()
+engine.gravity.y=0.35
+
+const render=Render.create({
+element:container,engine,
+options:{width,height,background:”#001A15”,wireframes:false,pixelRatio:dpr}
+})
+Render.run(render)
+Runner.run(Runner.create(),engine)
+
+const wall=80
+Composite.add(engine.world,[
+Bodies.rectangle(width/2,-wall/2,width,wall,{isStatic:true}),
+Bodies.rectangle(width/2,height+wall/2,width,wall,{isStatic:true}),
+Bodies.rectangle(-wall/2,height/2,wall,height,{isStatic:true}),
+Bodies.rectangle(width+wall/2,height/2,wall,height,{isStatic:true})
+])
+
+const mc=document.createElement(“canvas”)
+const mctx=mc.getContext(“2d”)
+const STAT_FONT=32px FaktProBlack
+const DESC_FONT=14px FaktProNormal
+const GAP=8
+
+function getM(font,text){
+mctx.font=font
+const m=mctx.measureText(text)
+return {w:m.width,asc:m.actualBoundingBoxAscent,desc:m.actualBoundingBoxDescent,h:m.actualBoundingBoxAscent+m.actualBoundingBoxDescent}
+}
+
+function pathHexSVG(ctx,w,h,r=16){
+const SVG_W=166,SVG_H=86,cx=83,cy=43
+const sx=w/SVG_W,sy=h/SVG_H
+const raw=[[166,43],[127.708,86],[38.292,86],[0,43],[38.292,0],[127.708,0]]
+const verts=raw.map(([x,y])=>[(x-cx)*sx,(y-cy)*sy])
+const smooth=0.6,n=verts.length
+ctx.beginPath()
+for(let i=0;i<n;i++){
+const prev=verts[(i+n-1)%n],cur=verts[i],next=verts[(i+1)%n]
+const d0x=prev[0]-cur[0],d0y=prev[1]-cur[1]
+const d1x=next[0]-cur[0],d1y=next[1]-cur[1]
+const l0=Math.hypot(d0x,d0y),l1=Math.hypot(d1x,d1y)
+const t=Math.min(r,l0/2,l1/2)
+const p0x=cur[0]+d0x/l0*t,p0y=cur[1]+d0y/l0*t
+const p1x=cur[0]+d1x/l1*t,p1y=cur[1]+d1y/l1*t
+const c0x=p0x+(cur[0]-p0x)*smooth,c0y=p0y+(cur[1]-p0y)*smooth
+const c1x=p1x+(cur[0]-p1x)*smooth,c1y=p1y+(cur[1]-p1y)*smooth
+if(i===0) ctx.moveTo(p0x,p0y); else ctx.lineTo(p0x,p0y)
+ctx.bezierCurveTo(c0x,c0y,c1x,c1y,p1x,p1y)
+}
+ctx.closePath()
+}
+
+function pathRoundedRect(ctx,w,h,r=20){
+const hw=w/2,hh=h/2,s=0.6
+ctx.beginPath()
+ctx.moveTo(-hw+r,-hh); ctx.lineTo(hw-r,-hh)
+ctx.bezierCurveTo(hw-r+r*s,-hh,hw,-hh+r-r*s,hw,-hh+r)
+ctx.lineTo(hw,hh-r)
+ctx.bezierCurveTo(hw,hh-r+r*s,hw-r+r*s,hh,hw-r,hh)
+ctx.lineTo(-hw+r,hh)
+ctx.bezierCurveTo(-hw+r-r*s,hh,-hw,hh-r+r*s,-hw,hh-r)
+ctx.lineTo(-hw,-hh+r)
+ctx.bezierCurveTo(-hw,-hh+r-r*s,-hw+r-r*s,-hh,-hw+r,-hh)
+ctx.closePath()
+}
+
+function pathEllipse(ctx,rx,ry){
+ctx.beginPath()
+ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2)
+ctx.closePath()
+}
+
+const DEG=Math.PI/180
+const cx=width/2
+
+const defs=[
+{ stat:“10M”,   desc:“audio minutes processed”, shape:“svg”,
+padXS:48,padYS:32,padXB:40,padYB:32,
+angle:5*DEG, xOff:20 },
+{ stat:“1 hour”,desc:“saved per doctor daily”,   shape:“ellipse”,
+padXS:32,padYS:32,padXB:32,padYB:32,
+angle:10*DEG, xOff:-30 },
+{ stat:“400K”,  desc:“visits documented”,        shape:“rect”,
+padXS:24,padYS:32,padXB:24,padYB:32,
+angle:-15*DEG, xOff:15 },
+]
+
+const measured=defs.map(d=>({
+stat:getM(STAT_FONT,d.stat),
+desc:getM(DESC_FONT,d.desc)
+}))
+
+const halfHeights=defs.map((d,i)=>measured[i].stat.h/2+d.padYS)
+const totalH=halfHeights.reduce((s,h)=>s+h*2,0)
+let curY=height/2+totalH/2
+const poseYs=halfHeights.map(hh=>{ const y=curY-hh; curY-=hh*2; return y })
+
+const slots=defs.map((d,i)=>{
+const sm=measured[i]
+const statH=sm.stat.h
+const descH=sm.desc.h
+const smallContentH=statH
+const bigContentH=statH+GAP+descH
+
+const srx=sm.stat.w/2+d.padXS
+const sry=smallContentH/2+d.padYS
+const brx=Math.max(sm.stat.w,sm.desc.w)/2+d.padXB
+const bry=bigContentH/2+d.padYB
+
+const bw=srx*2,bh=sry*2
+const pose={x:cx+d.xOff,y:poseYs[i],angle:d.angle}
+
+const body=Bodies.rectangle(pose.x,pose.y,bw,bh,{
+friction:0.3,frictionAir:0.01,restitution:0.3,
+render:{fillStyle:“transparent”},
+chamfer:{radius:d.shape===‘rect’?20:bh/2}
+})
+Body.setAngle(body,pose.angle)
+
+return {
+…d,sm,statH,descH,smallContentH,bigContentH,
+srx,sry,brx,bry,
+body,sizeP:0,hoverFrames:0,
+pose,vrx:srx,vry:sry,physW:bw,physH:bh
+}
+})
+
+Composite.add(engine.world,slots.map(s=>s.body))
+
+const mouse=Mouse.create(render.canvas)
+mouse.pixelRatio=dpr
+const mc2=MouseConstraint.create(engine,{mouse,constraint:{stiffness:0.2}})
+Composite.add(engine.world,mc2)
+render.mouse=mouse
+
+let mousePos={x:-9999,y:-9999},mouseInside=false
+render.canvas.addEventListener(“mousemove”,e=>{
+const r=render.canvas.getBoundingClientRect()
+mousePos={x:e.clientX-r.left,y:e.clientY-r.top}
+mouseInside=true
+})
+render.canvas.addEventListener(“mouseleave”,()=>{ mouseInside=false })
+
+let released=false
+const HOVER_IN=3
+
+function normalizeAngle(a){
+while(a>Math.PI) a-=2*Math.PI
+while(a<-Math.PI) a+=2*Math.PI
+return a
+}
+
+function pointInShape(slot,mx,my){
+const b=slot.body
+const dx=mx-b.position.x,dy=my-b.position.y
+const cos=Math.cos(-b.angle),sin=Math.sin(-b.angle)
+const lx=dx*cos-dy*sin,ly=dx*sin+dy*cos
+return (lx*lx)/(slot.vrx*slot.vrx)+(ly*ly)/(slot.vry*slot.vry)<=1
+}
+
+Events.on(engine,“beforeUpdate”,()=>{
+if(!released&&mouseInside&&slots.some(s=>pointInShape(s,mousePos.x,mousePos.y))) released=true
+
+slots.forEach(slot=>{
+const b=slot.body
+if(!released){
+Body.setPosition(b,{x:slot.pose.x,y:slot.pose.y})
+Body.setAngle(b,slot.pose.angle)
+Body.setVelocity(b,{x:0,y:0})
+Body.setAngularVelocity(b,0)
+} else {
+const a=normalizeAngle(b.angle)
+Body.setAngularVelocity(b,b.angularVelocity-a*0.012-b.angularVelocity*0.08)
+}
+
+
+const inside=mouseInside&&pointInShape(slot,mousePos.x,mousePos.y)
+if(inside) slot.hoverFrames=Math.min(slot.hoverFrames+1,HOVER_IN+1)
+else slot.hoverFrames=0
+
+const hovering=slot.hoverFrames>=HOVER_IN
+slot.sizeP+=((hovering?1:0)-slot.sizeP)*(hovering?0.08:0.10)
+
+slot.vrx=slot.srx+(slot.brx-slot.srx)*slot.sizeP
+slot.vry=slot.sry+(slot.bry-slot.sry)*slot.sizeP
+
+const targetW=slot.vrx*2,targetH=slot.vry*2
+const dw=Math.abs(targetW-slot.physW)>0.1
+const dh=Math.abs(targetH-slot.physH)>0.1
+if(dw||dh){
+  const sa=b.angle,sav=b.angularVelocity
+  Body.setAngle(b,0)
+  Body.scale(b,dw?targetW/slot.physW:1,dh?targetH/slot.physH:1)
+  Body.setAngle(b,sa)
+  Body.setAngularVelocity(b,sav)
+  slot.physW=targetW
+  slot.physH=targetH
+}
+
+
+})
+})
+
+Events.on(render,“afterRender”,()=>{
+const ctx=render.context
+slots.forEach(slot=>{
+const b=slot.body
+const {sm,statH,descH,sizeP,vrx,vry,shape}=slot
+
+
+ctx.save()
+ctx.translate(b.position.x,b.position.y)
+ctx.rotate(b.angle)
+
+const draw=()=>{
+  if(shape==='ellipse') pathEllipse(ctx,vrx,vry)
+  else if(shape==='svg') pathHexSVG(ctx,vrx*2,vry*2,16)
+  else pathRoundedRect(ctx,vrx*2,vry*2,20)
+}
+draw(); ctx.fillStyle="#0B412F"; ctx.fill()
+draw(); ctx.clip()
+
+ctx.textAlign="center"
+ctx.fillStyle="#FAF5F0"
+
+const curContentH=slot.smallContentH+(slot.bigContentH-slot.smallContentH)*sizeP
+const blockTop=-curContentH/2
+
+ctx.font=STAT_FONT
+ctx.fillText(slot.stat,0,blockTop+sm.stat.asc)
+
+const textAlpha=Math.max(0,(sizeP-0.8)/0.2)
+if(textAlpha>0.001){
+  ctx.globalAlpha=textAlpha
+  ctx.font=DESC_FONT
+  ctx.fillText(slot.desc,0,blockTop+statH+GAP+sm.desc.asc)
+  ctx.globalAlpha=1
+}
+ctx.restore()
+
+
+})
+})
+}
+</script>
+
 </body>
 </html>
